@@ -1,37 +1,96 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 )
 
-func startPongServer() {
-	http.HandleFunc("/pong", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "pong")
-	})
-
-	log.Println("Pong сервер запущен на порту 8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+// Структура для отправки имени хоста в POST-запросе
+type PingPayload struct {
+    Hostname string `json:"hostname"`
 }
 
-func startPingClient(pongAddress string, interval time.Duration) {
-	for {
-		resp, err := http.Get(pongAddress + "/pong")
-		if err != nil {
-			log.Printf("Ошибка при запросе к %s: %v\n", pongAddress, err)
-		} else {
-			body, _ := ioutil.ReadAll(resp.Body)
-			log.Printf("Ответ от сервера: %s\n", string(body))
-			resp.Body.Close()
-		}
-		time.Sleep(interval)
-	}
+// Структура для ответа сервера pong
+type PongResponse struct {
+    ClientIP string `json:"client_ip"`
+    Hostname string `json:"hostname"`
+}
+
+func startPongServer(pingPort string) {
+    http.HandleFunc("/pong", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodPost {
+            // Получаем IP-адрес клиента
+            clientIP, _, err := net.SplitHostPort(r.RemoteAddr)
+            if err != nil {
+                log.Printf("Ошибка при получении IP-адреса клиента: %v\n", err)
+                http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+                return
+            }
+
+            // Читаем тело запроса
+            var payload PingPayload
+            body, err := ioutil.ReadAll(r.Body)
+            if err != nil {
+                log.Printf("Ошибка при чтении тела запроса: %v\n", err)
+                http.Error(w, "Bad Request", http.StatusBadRequest)
+                return
+            }
+            if err := json.Unmarshal(body, &payload); err != nil {
+                log.Printf("Ошибка при разборе JSON: %v\n", err)
+                http.Error(w, "Bad Request", http.StatusBadRequest)
+                return
+            }
+
+            // Формируем и возвращаем ответ
+            response := PongResponse{
+                ClientIP: clientIP,
+                Hostname: payload.Hostname,
+            }
+            responseBody, _ := json.Marshal(response)
+            w.Header().Set("Content-Type", "application/json")
+            w.Write(responseBody)
+			log.Printf("Ответ: %s\n", string(responseBody))
+        } else {
+            http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+        }
+    })
+
+    log.Println("Pong сервер запущен на порту"+pingPort)
+    log.Fatal(http.ListenAndServe(":"+pingPort, nil))
+}
+
+// Функция для режима "ping"
+func startPingClient(pongAddress string, interval time.Duration, hostname string) {
+    for {
+        // Формируем тело запроса с именем хоста
+        payload := PingPayload{Hostname: hostname}
+        payloadBytes, err := json.Marshal(payload)
+        if err != nil {
+            log.Printf("Ошибка при сериализации JSON: %v\n", err)
+            continue
+        }
+
+        // Отправляем POST-запрос
+        resp, err := http.Post(pongAddress+"/pong", "application/json", bytes.NewBuffer(payloadBytes))
+        if err != nil {
+            log.Printf("Ошибка при запросе к %s: %v\n", pongAddress, err)
+        } else {
+            // Читаем ответ
+            body, _ := ioutil.ReadAll(resp.Body)
+            log.Printf("Ответ от сервера: %s\n", string(body))
+            resp.Body.Close()
+        }
+        time.Sleep(interval)
+    }
 }
 
 func main() {
@@ -61,11 +120,23 @@ func main() {
 		}
 	}
 
+	hostname := os.Getenv("HOSTNAME")
+    if hostname == "" {
+        log.Println("Переменная среды HOSTNAME не найдена, используем 'unknown'")
+        hostname = "unknown"
+    }
+
+	pingPort := os.Getenv("PONG_PORT")
+    if hostname == "" {
+        log.Println("Переменная среды HOSTNAME не найдена, используем 'unknown'")
+        hostname = "unknown"
+    }
+
 	if mode == "pong" {
-		startPongServer()
+		startPongServer(pingPort)
 	} else if mode == "ping" {
-		log.Printf("Ping клиент запущен. Адрес сервера: %s, интервал: %d секунд\n", pongAddress, interval)
-		startPingClient(pongAddress, time.Duration(interval)*time.Second)
+		log.Printf("Ping клиент запущен. Адрес сервера: %s, интервал: %d секунд\n", pongAddress, interval, hostname)
+		startPingClient(pongAddress, time.Duration(interval)*time.Second, hostname)
 	} else {
 		fmt.Println("Укажите режим работы с помощью флага -mode или переменной среды MODE: ping или pong")
 		os.Exit(1)
