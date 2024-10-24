@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ping-service-account
+  namespace: istio-test
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pong-service-account
+  namespace: istio-test
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: ping-destination-rule
+  namespace: istio-test
+spec:
+  host: ping-svc.istio-test.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL 
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: ping-peer-authentication
+  namespace: istio-test
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: ping
+  mtls:
+    mode: STRICT
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: pong-destination-rule
+  namespace: istio-test
+spec:
+  host: pong-svc.istio-test.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: pong-peer-authentication
+  namespace: istio-test
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: pong
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-ping-to-pong
+  namespace: istio-test
+spec:
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces: ["istio-test"]
+    - source:
+        requestPrincipals: ["cluster.local/ns/istio-test/sa/ping-service-account"]
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: pong # на какой сервис действует политика
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-pong-to-ping
+  namespace: istio-test
+spec:
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces: ["istio-test"]
+    - source:
+        requestPrincipals: ["cluster.local/ns/istio-test/sa/pong-service-account"]
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: ping # на какой сервис действует политика

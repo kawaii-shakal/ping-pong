@@ -135,7 +135,7 @@ func main() {
 	if mode == "pong" {
 		startPongServer(pingPort)
 	} else if mode == "ping" {
-		log.Printf("Ping клиент запущен. Адрес сервера: %s, интервал: %d секунд\n", pongAddress, interval, hostname)
+		log.Printf("Ping клиент запущен. Адрес сервера: %s, интервал: %d секунд\n", pongAddress, interval)
 		startPingClient(pongAddress, time.Duration(interval)*time.Second, hostname)
 	} else {
 		fmt.Println("Укажите режим работы с помощью флага -mode или переменной среды MODE: ping или pong")

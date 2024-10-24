@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping
+  namespace: istio-test
+  labels:
+    app.kubernetes.io/name: pingpong
+    app.kubernetes.io/instance: ping
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pingpong
+      app.kubernetes.io/instance: ping
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pingpong
+        app.kubernetes.io/instance: ping
+    spec:
+      serviceAccountName: ping-service-account
+      containers:
+        - name: ping
+          image: pingpong:latest
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: PING_ADDRESS
+              value: http://pong-svc:8000
+            - name: MODE
+              value: "ping"
+          resources:
+            limits:
+              cpu: '0.02'
+              memory: 10Mi
+            requests:
+              cpu: '0.01'
+              memory: 1Mi
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pong
+  namespace: istio-test
+  labels:
+    app.kubernetes.io/name: pingpong
+    app.kubernetes.io/instance: pong
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pingpong
+      app.kubernetes.io/instance: pong
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pingpong
+        app.kubernetes.io/instance: pong
+    spec:
+      serviceAccountName: pong-service-account
+      containers:
+        - name: pong
+          image: pingpong:latest
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: PONG_PORT
+              value: "8000"
+            - name: MODE
+              value: "pong"
+          resources:
+            limits:
+              cpu: '0.02'
+              memory: 10Mi
+            requests:
+              cpu: '0.01'
+              memory: 1Mi
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ping-svc
+  namespace: istio-test
+  labels:
+    app.kubernetes.io/name: pingpong
+    app.kubernetes.io/instance: ping
+spec:
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: pingpong
+    app.kubernetes.io/instance: ping
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pong-svc
+  namespace: istio-test
+  labels:
+    app.kubernetes.io/name: pingpong
+    app.kubernetes.io/instance: pong
+spec:
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: pingpong
+    app.kubernetes.io/instance: pong
+  type: ClusterIP
